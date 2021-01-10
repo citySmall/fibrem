@@ -1,87 +1,24 @@
 #!/usr/bin/env python3
 import pdb
+import matplotlib
+matplotlib.use("TkAgg")
+from matplotlib.backends.backend_tkagg import (
+    FigureCanvasTkAgg, NavigationToolbar2Tk)
+# Implement the default Matplotlib key bindings.
+from matplotlib.backend_bases import key_press_handler
+from matplotlib.figure import Figure
+import matplotlib.animation as animation
+from matplotlib import style
 import os
 import skimage
 import tkinter as tk
 import numpy as np
 from skimage.filters import gaussian
-from tkinter import filedialog
+from tkinter import *
 from skimage import io
-from tkinter import messagebox
 from natsort import natsorted
-from tkinter import ttk
-
-LARGE_FONT= ("Verdana", 12) 
-
-class FibRem(tk.Tk):
-
-    def __init__(self, *args, **kwargs):
-        tk.Tk.__init__(self, *args, **kwargs)
-        tk.Tk.wm_title(self, "Fib Rem: Sleeping aid for FIBSEMers")
-        
-        # init main window
-        container = tk.Frame(self)
-        container.pack(side="top", fill="both", expand= True)
-        container.grid_rowconfigure(0, weight=1)
-        container.grid_columnconfigure(0, weight=1)
-    
-        # Init dict of frames
-        self.frames = {}
-
-        # the start page
-        for F in (StartPage, PageOne):
-            frame = F(container, self)
-            self.frames[F] = frame 
-            frame.grid(row=0, column=0, sticky="nsew")
-
-        self.show_frame(StartPage)
-
-    def show_frame(self, framekey):
-
-        frame = self.frames[framekey]
-        frame.tkraise()
-
-        
-        
-class StartPage(tk.Frame):
-
-    def __init__(self, parent, framekey):
-        tk.Frame.__init__(self, parent)
-        label = tk.Label(self, text="Start Page", font=LARGE_FONT)
-        label.pack(pady=10, padx=10)
-        button1 = ttk.Button(self, text= "Go to page 1",
-                            command=lambda: framekey.show_frame(PageOne))
-        button1.pack()
 
 
-class PageOne(tk.Frame):
-
-    def __init__(self, parent, framekey):
-        tk.Frame.__init__(self, parent)
-        label = tk.Label(self, text="Page 1", font=LARGE_FONT)
-        label.pack(pady=10, padx=10)
-        button1 = ttk.Button(self, text= "Go Start Page",
-                            command=lambda: framekey.show_frame(StartPage))
-        button1.pack()
-
-
-        
-app = FibRem()
-app.mainloop()
-        
-
-
-
-
-
-
-
-
-class WatchImgFolder:
-    
-    def __init__(self, *args, **kargs):
-        pass
-    pass
 
 # def new_dialog():
     
