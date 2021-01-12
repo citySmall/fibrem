@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 import pdb
+import time
 from skimage.filters import gaussian
 from skimage import io
 from tkinter import *
@@ -17,7 +18,7 @@ root.title('FibRem: Seeping aid for EM microscopists')
 
 
 class Watchdog(PatternMatchingEventHandler, Observer):
-    def __init__(self, path='.', patterns='*.tiff', logfunc=print):
+    def __init__(self, path, patterns, logfunc):
         PatternMatchingEventHandler.__init__(self, patterns)
         Observer.__init__(self)
         self.schedule(self, path=path, recursive=False)
@@ -25,8 +26,10 @@ class Watchdog(PatternMatchingEventHandler, Observer):
 
     def on_created(self, event):
         # This function is called when a file is created
-        fi = get_focus_index(event.src_path)
-        print(fi)
+        # We sleep to allow time for the file to be created
+        if event.src_path.split(".")[-1] == "tiff":
+            time.sleep(5)
+            get_focus_index(event.src_path)
         
     def on_deleted(self, event):
         # This function is called when a file is deleted
@@ -68,7 +71,7 @@ class LeftFrame:
             self.select_path()
             
         if self.watchdog is None:
-            self.watchdog = Watchdog(path=self.watch_path, logfunc=self.log)
+            self.watchdog = Watchdog(path=self.watch_path, patterns="*.tiff", logfunc=self.log)
             self.watchdog.start()
             self.log('Watchdog started')
         else:
@@ -92,21 +95,28 @@ class LeftFrame:
     def log(self, message):
         showinfo(root, message=f'{message}\n')
                  
-
-
+        
 def get_focus_index(imgpath):
-    pdb.set_trace()
+    print("Reading: " + imgpath)
+    items = imgpath.split("/")
+    imgname = items[-1]
+    basepath = "/".join(items[:-1]) + "/"
+
     # Calculate focus index as in Xu et al. 2017
     img = io.imread(imgpath)
     smooth_short = gaussian(img, sigma=2)
     smooth_long  = gaussian(img, sigma=4)
     pixwise_dif = smooth_short - smooth_long
     focus_index = np.sum(np.sqrt(np.square(pixwise_dif))) / img.size
+
+    # Write it to a file
+    f = open(basepath + "focus_idxs.csv", "a+")
+    f.write(imgname + "\t" + str(focus_index) + "\n")
+    f.close()
     
-    return focus_index
     
 
-        
+    
 class PlotsFrame:
     def __init__(self, master):
         frm = Frame(master)
@@ -115,8 +125,6 @@ class PlotsFrame:
         plt.hist(focus_index)
         plt.show()
     
-
-
 
 lf = LeftFrame(root)
 root.mainloop()
