@@ -1,84 +1,122 @@
 #!/usr/bin/env python3
-import pdb
-import matplotlib
-matplotlib.use("TkAgg")
-from matplotlib.backends.backend_tkagg import (
-    FigureCanvasTkAgg, NavigationToolbar2Tk)
-# Implement the default Matplotlib key bindings.
-from matplotlib.backend_bases import key_press_handler
-from matplotlib.figure import Figure
-import matplotlib.animation as animation
-from matplotlib import style
-import os
-import skimage
-import tkinter as tk
+import matplotlib.pyplot as plt
 import numpy as np
+import os
+import pdb
 from skimage.filters import gaussian
-from tkinter import *
 from skimage import io
-from natsort import natsorted
+from tkinter import *
+from tkinter import filedialog
+from tkinter.messagebox import showinfo
+from watchdog.observers import Observer
+from watchdog.events import PatternMatchingEventHandler
 
 
-
-# def new_dialog():
-    
-#     # Create an empty dialog object
-#     parent = tkinter.Tk() # Create the object
-#     parent.overrideredirect(1) # Avoid it appearing and then disappearing quickly
-#     #parent.iconbitmap("PythonIcon.ico") # Set an icon (this is optional - must be in a .ico format)
-#     parent.withdraw() # Hide the window as we do not want to see this one
-
-#     return parent
-
-# def images_directory():
-    
-#     # Ask the user for the folder where images are being stored
-#     parent = new_dialog()
-#     directory = filedialog.askdirectory(title='Select images folder', parent=parent)
-    
-#     return directory
+root = Tk()
+root.title('FibRem: Seeping aid for EM microscopists')
 
 
-# def detect_new_image(imgdir):
-    
-#     images_on_init = [fname for fname in os.listdir(imgdir) if fname.endswith('tiff')]
-    
-#     if images_on_init == []:
-#         parent = new_dialog()
-#         error = messagebox.showerror('Error images directory',
-#                                      '''The directory chosen doesnt contain any tiff image.\
-#                                         Wrong directory chosen or SEM adquisition not started.''',
-#                                       parent=parent)
+class Watchdog(PatternMatchingEventHandler, Observer):
+    def __init__(self, path='.', patterns='*.tiff', logfunc=print):
+        PatternMatchingEventHandler.__init__(self, patterns)
+        Observer.__init__(self)
+        self.schedule(self, path=path, recursive=False)
+        self.log = logfunc
+
+    def on_created(self, event):
+        # This function is called when a file is created
+        fi = get_focus_index(event.src_path)
+        print(fi)
         
-          
-#     # Sort the images
-#     images_on_init = natsorted(images_on_init)
+    def on_deleted(self, event):
+        # This function is called when a file is deleted
+        self.log(f"Someone deleted {event.src_path}!")
+
+    def on_moved(self, event):
+        # This function is called when a file is moved    
+        self.log(f"Someone moved {event.src_path} to {event.dest_path}")
+
+class LeftFrame:
+    def __init__(self, master):
+        frm = Frame(master)
+        
+        # Watchdog init
+        self.watchdog = None
+        self.watch_path = None
     
-#     # Calculate the focus index for each init image
-#     for imgfname in images_on_init:
-#         calculate_focus(os.path.join(imgdir, imgfname))
-   
-#    # watch for new images appearing and calculate the FI 
+        # People init Off-duty 
+        self.ana_duty = IntVar(0)
+        self.eliz_duty = IntVar(0)
+        self.marc_duty = IntVar(0)
 
-#     return images_on_init
+        # Generate checkbuttons
+        Label(master, text='Select people to notify: ').pack(pady=5,  anchor=W)
+        Checkbutton(master, text='Ana', variable=self.ana_duty).pack(pady=5, anchor=W)
+        Checkbutton(master, text='Elisabeth', variable=self.eliz_duty).pack(pady=5, anchor=W)
+        Checkbutton(master, text='Marc', variable=self.marc_duty).pack(pady=5, anchor=W)
+
+        # Generate monitoring buttons
+        Label(master, text=' ').pack(pady=5)
+        Button(master, text='Select Folder', command=self.select_path).pack(anchor=S+W)
+        Button(master, text='Start Monitoring', command=self.start_watchdog).pack(anchor=S+W)
+        Button(master, text='Stop Monitoring', command=self.stop_watchdog).pack(anchor=S+W)
+        Button(master, text='Exit', command=root.destroy).pack(anchor=S+W)
+        frm.pack(fill=Y, expand=1)
+        
+    def start_watchdog(self):
+        if not self.watch_path:
+            self.select_path()
+            
+        if self.watchdog is None:
+            self.watchdog = Watchdog(path=self.watch_path, logfunc=self.log)
+            self.watchdog.start()
+            self.log('Watchdog started')
+        else:
+            self.log('Watchdog already started')
 
 
-# def calculate_focus(imgpath):
-#     new_image = io.imread(imgpath)
-#     smooth_short = gaussian(new_image, sigma=2)
-#     smooth_long  = gaussian(new_image, sigma=4)
-#     pixwise_dif = smooth_short - smooth_long
-#     focus_index = np.sum(np.sqrt(np.square(pixwise_dif))) / new_image.size
-#     print(imgpath + ": " + str(focus_index))
+    def stop_watchdog(self):
+        if self.watchdog:
+            self.watchdog.stop()
+            self.watchdog = None
+            self.log('Watchdog stopped')
+        else:
+            self.log('Watchdog is not running')
 
+    def select_path(self):
+        path = filedialog.askdirectory()
+        if path:
+            self.watch_path = path
+            self.log(f'Selected path: {path}')
+        
+    def log(self, message):
+        showinfo(root, message=f'{message}\n')
+                 
+
+
+def get_focus_index(imgpath):
+    pdb.set_trace()
+    # Calculate focus index as in Xu et al. 2017
+    img = io.imread(imgpath)
+    smooth_short = gaussian(img, sigma=2)
+    smooth_long  = gaussian(img, sigma=4)
+    pixwise_dif = smooth_short - smooth_long
+    focus_index = np.sum(np.sqrt(np.square(pixwise_dif))) / img.size
     
+    return focus_index
+    
+
+        
+class PlotsFrame:
+    def __init__(self, master):
+        frm = Frame(master)
+        frm.pack()
+        self.focus_index = np.random.normal(0.34, 0.1, 3000)
+        plt.hist(focus_index)
+        plt.show()
     
 
 
 
-
-
-    
-# if __name__=='__main__':    
-#     dir_to_watch = images_directory()
-#     detect_new_image(dir_to_watch)
+lf = LeftFrame(root)
+root.mainloop()
