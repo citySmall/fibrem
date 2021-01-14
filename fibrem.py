@@ -33,7 +33,7 @@ class Watchdog(PatternMatchingEventHandler, Observer):
         # We sleep to allow time for the file to be created
         if event.src_path.split(".")[-1] == "tiff":
             time.sleep(5)
-            ImgProcessor(event.src_path).get_focus_index()
+            PlotsFrame(event.src_path).get_focus_index()
         
     def on_deleted(self, event):
         # This function is called when a file is deleted
@@ -101,15 +101,20 @@ class LeftFrame(tk.Frame):
 
     def log(self, message):
         showinfo(root, message=f'{message}\n')
+
         
-class ImgProcessor:
-    focus_idxs = []        
-    def __init__(self, path, *args, **kargs):
-        self.imgpath = path
+class PlotsFrame(tk.Frame):
+    
+    focus_idxs = []
+    def __init__(self, parent, *args, **kwargs):
+        tk.Frame.__init__(self, parent)
+        self.parent = parent
+        self.lbl1 = tk.Label(self, text='Vital constants plots').pack(pady=5)
+        self.widget = None
+        self.toolbar = None
         
-    def get_focus_index(self):
-        
-        print("Reading: " + self.imgpath)
+    def get_focus_index(self, imgpath):
+        print("Reading: " + imgpath)
         self.items = self.imgpath.split("/")
         self.imgname = self.items[-1]
         self.basepath = "/".join(self.items[:-1]) + "/"
@@ -120,40 +125,28 @@ class ImgProcessor:
         self.smooth_long  = gaussian(self.img, sigma=4)
         self.pixwise_dif = self.smooth_short - self.smooth_long
         self.focus_index = np.sum(np.sqrt(np.square(self.pixwise_dif))) / self.img.size
-        ImgProcessor.update_idxs_list(self.imgname, self.focus_index)
+
+        # Keep copy of 100 focus idxs for detection 
+        if len(focus_idxs) < 100:
+            focus_idxs.append((self.imgname, self.focus_index))
+        else: 
+            focus_idxs.clear()
+            focus_idxs.append((self.imgname, self.focus_index))
+            
+        print(focus_idxs[-5:])    
         
         # Backup to a file a update the plot
-        f = open(self.basepath + "focus_idxs.csv", "a+")
-        f.write(self.imgname + "," + str(self.focus_index) + "\n")
-        f.flush()
-        f.seek(0)
+        self.f = open(self.basepath + "focus_idxs.csv", "a+")
+        self.f.write(self.imgname + "," + str(self.focus_index) + "\n")
+        self.f.flush()
+        self.f.seek(0)
 
-        # Read contents to update the plot
-        PlotsFrame.create_plot(f)
-        f.close()
-    
-    @staticmethod    
-    def update_idxs_list(img, idx):    
-        # Keep in memory for detection 
-        if len(ImgProcessor.focus_idxs) < 100:
-            ImgProcessor.focus_idxs.append((img, idx))
-        else: 
-            ImgProcessor.focus_idxs.clear()
-            ImgProcessor.focus_idxs.append((img, idx))
-            
-        print(ImgProcessor.focus_idxs[-5:])    
+        # Update the plot
+        self.refresh_plot(self.f)
+        self.f.close()
+                
         
-        
-class PlotsFrame(tk.Frame):
-    def __init__(self, parent, *args, **kwargs):
-        tk.Frame.__init__(self, parent)
-        self.parent = parent
-        self.lbl1 = tk.Label(self, text='Vital constants plots').pack(pady=5)
-        self.widget = None
-        self.toolbar = None
-        
-
-    def create_plot(self, fhandle):
+    def refresh_plot(self, fhandle):
 
         # remove old widgets
         if self.widget:
@@ -187,8 +180,6 @@ class PlotsFrame(tk.Frame):
         self.widget = canvas.get_tk_widget()
         self.widget.pack(fill=tk.BOTH)
 
-
-        
 
 class MainApplication(tk.Frame):
     def __init__(self, parent, *args, **kwargs):
