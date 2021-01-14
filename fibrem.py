@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 import matplotlib
+#import matplotlib.animation as animation
 matplotlib.use("TKAgg")
 from matplotlib.backends.backend_tkagg import (
     FigureCanvasTkAgg, NavigationToolbar2Tk)
 from matplotlib.figure import Figure
+from matplotlib import style
+style.use('ggplot')
 import numpy as np
 import os
+import pandas as pd
 import pdb
 import time
 from skimage.filters import gaussian
@@ -18,7 +22,7 @@ from watchdog.events import PatternMatchingEventHandler
 
         
 class Watchdog(PatternMatchingEventHandler, Observer):
-    def __init__(self, path='.', patterns="*" ,*args, **kwargs):
+    def __init__(self, path='.', patterns="*" ,logfunc=print ,*args, **kwargs):
         PatternMatchingEventHandler.__init__(self, patterns)
         Observer.__init__(self)
         self.schedule(self, path=path, recursive=False)
@@ -29,7 +33,7 @@ class Watchdog(PatternMatchingEventHandler, Observer):
         # We sleep to allow time for the file to be created
         if event.src_path.split(".")[-1] == "tiff":
             time.sleep(5)
-            get_focus_index(event.src_path)
+            ImgProcessor(event.src_path).get_focus_index()
         
     def on_deleted(self, event):
         # This function is called when a file is deleted
@@ -42,7 +46,7 @@ class Watchdog(PatternMatchingEventHandler, Observer):
         
 class LeftFrame(tk.Frame):
     def __init__(self, parent, *args, **kwargs):
-        tk.Frame.__init__(self, parent, bg="red" ,*args, **kwargs)
+        tk.Frame.__init__(self, parent, *args, **kwargs)
         self.parent = parent
 
         # Watchdog status
@@ -55,9 +59,9 @@ class LeftFrame(tk.Frame):
         self.marc_duty = tk.IntVar(0)
 
         # Generate checkbuttons
-        self.lbl1 = tk.Label(self, text='Select people to notify: ').pack(pady=5,  anchor=tk.W)
+        self.lbl1 = tk.Label(self, text='Select people to notify: ').pack(padx=5, pady=5,  anchor=tk.W)
         self.cbtn1 = tk.Checkbutton(self, text='Ana', variable=self.ana_duty).pack(pady=5, anchor=tk.W)
-        self.cbtn2 = tk.Checkbutton(self, text='Elisabeth', variable=self.eliz_duty).pack(pady=5, anchor=tk.W)
+        self.cbtn2 = tk.Checkbutton(self, text='Elizabeth', variable=self.eliz_duty).pack(pady=5, anchor=tk.W)
         self.cbtn3 = tk.Checkbutton(self, text='Marc', variable=self.marc_duty).pack(pady=5, anchor=tk.W)
 
         # Generate monitoring buttons
@@ -88,51 +92,104 @@ class LeftFrame(tk.Frame):
         else:
             self.log('Watchdog is not running')
 
+            
     def select_path(self):
         path = filedialog.askdirectory()
         if path:
             self.watch_path = path
             self.log(f'Selected path: {path}')    
-                 
+
+    def log(self, message):
+        showinfo(root, message=f'{message}\n')
         
-def get_focus_index(imgpath):
-    print("Reading: " + imgpath)
-    items = imgpath.split("/")
-    imgname = items[-1]
-    basepath = "/".join(items[:-1]) + "/"
+class ImgProcessor:
+    focus_idxs = []        
+    def __init__(self, path, *args, **kargs):
+        self.imgpath = path
+        
+    def get_focus_index(self):
+        
+        print("Reading: " + self.imgpath)
+        self.items = self.imgpath.split("/")
+        self.imgname = self.items[-1]
+        self.basepath = "/".join(self.items[:-1]) + "/"
 
-    # Calculate focus index as in Xu et al. 2017
-    img = io.imread(imgpath)
-    smooth_short = gaussian(img, sigma=2)
-    smooth_long  = gaussian(img, sigma=4)
-    pixwise_dif = smooth_short - smooth_long
-    focus_index = np.sum(np.sqrt(np.square(pixwise_dif))) / img.size
+        # Calculate focus index as in Xu et al. 2017
+        self.img = io.imread(self.imgpath)
+        self.smooth_short = gaussian(self.img, sigma=2)
+        self.smooth_long  = gaussian(self.img, sigma=4)
+        self.pixwise_dif = self.smooth_short - self.smooth_long
+        self.focus_index = np.sum(np.sqrt(np.square(self.pixwise_dif))) / self.img.size
+        ImgProcessor.update_idxs_list(self.imgname, self.focus_index)
+        
+        # Backup to a file a update the plot
+        f = open(self.basepath + "focus_idxs.csv", "a+")
+        f.write(self.imgname + "," + str(self.focus_index) + "\n")
+        f.flush()
+        f.seek(0)
 
-    # Write it to a file
-    f = open(basepath + "focus_idxs.csv", "a+")
-    f.write(imgname + "\t" + str(focus_index) + "\n")
-    f.close()
+        # Read contents to update the plot
+        PlotsFrame.create_plot(f)
+        f.close()
     
+    @staticmethod    
+    def update_idxs_list(img, idx):    
+        # Keep in memory for detection 
+        if len(ImgProcessor.focus_idxs) < 100:
+            ImgProcessor.focus_idxs.append((img, idx))
+        else: 
+            ImgProcessor.focus_idxs.clear()
+            ImgProcessor.focus_idxs.append((img, idx))
+            
+        print(ImgProcessor.focus_idxs[-5:])    
+        
         
 class PlotsFrame(tk.Frame):
     def __init__(self, parent, *args, **kwargs):
         tk.Frame.__init__(self, parent)
         self.parent = parent
         self.lbl1 = tk.Label(self, text='Vital constants plots').pack(pady=5)
+        self.widget = None
+        self.toolbar = None
+        
 
-        fig = Figure(figsize=(10, 8), dpi=100)
-        t = np.arange(0, 3, .01)
-        fig.add_subplot(111).plot(t, 2 * np.sin(2 * np.pi * t))
+    def create_plot(self, fhandle):
 
-        canvas = FigureCanvasTkAgg(fig, master=self)  # A tk.DrawingArea.
-        canvas.draw()
-        canvas.get_tk_widget().pack()
+        # remove old widgets
+        if self.widget:
+            self.widget.destroy()
 
-        toolbar = NavigationToolbar2Tk(canvas, self)
-        toolbar.update()
-        canvas.get_tk_widget().pack()
+        if self.toolbar:
+            self.toolbar.destroy()
+
+        # Prepare the plot
+        plt = Figure(figsize=(4, 4), dpi=100)
+        a = plt.add_subplot(211)
+        a.set_ylabel("Focus Index (a.u.)")
+        a.set_title("Focus index evolution")
+
+        # Parse data
+        data = fhandle.read().split('\n')
+        xar=[]
+        yar=[]
+        
+        for line in data:
+            if len(line)>1:
+                x,y = line.split(',')
+                xar.append(str(x))
+                yar.append(int(y))
+                
+        a.plot(xar,yar)        
+        
+        canvas = FigureCanvasTkAgg(plt, self)
+
+        self.toolbar = NavigationToolbar2Tk(canvas, self)
+        self.widget = canvas.get_tk_widget()
+        self.widget.pack(fill=tk.BOTH)
+
 
         
+
 class MainApplication(tk.Frame):
     def __init__(self, parent, *args, **kwargs):
         tk.Frame.__init__(self, parent, *args, **kwargs)
@@ -144,6 +201,6 @@ class MainApplication(tk.Frame):
 
 if __name__ == "__main__":
     root = tk.Tk()
-    root.title('FibRem: Seeping aid for EM microscopists')
+    root.title('FibRem: Sleeping aid for EM microscopists')
     MainApplication(root).pack(side="top", fill="both", expand=True)
     root.mainloop()
