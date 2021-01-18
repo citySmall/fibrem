@@ -7,7 +7,6 @@ let
     scikitimage
     matplotlib
     watchdog
-    opencv4
   ];
   python-with-my-packages = python3.withPackages my-python-packages;
 in

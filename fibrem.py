@@ -33,7 +33,7 @@ class Watchdog(PatternMatchingEventHandler, Observer):
         # We sleep to allow time for the file to be created
         if event.src_path.split(".")[-1] == "tiff":
             time.sleep(5)
-            PlotsFrame(event.src_path).get_focus_index()
+            pfm.get_focus_index(event.src_path)
         
     def on_deleted(self, event):
         # This function is called when a file is deleted
@@ -115,25 +115,25 @@ class PlotsFrame(tk.Frame):
         
     def get_focus_index(self, imgpath):
         print("Reading: " + imgpath)
-        self.items = self.imgpath.split("/")
+        self.items = imgpath.split("/")
         self.imgname = self.items[-1]
         self.basepath = "/".join(self.items[:-1]) + "/"
 
         # Calculate focus index as in Xu et al. 2017
-        self.img = io.imread(self.imgpath)
+        self.img = io.imread(imgpath)
         self.smooth_short = gaussian(self.img, sigma=2)
         self.smooth_long  = gaussian(self.img, sigma=4)
         self.pixwise_dif = self.smooth_short - self.smooth_long
         self.focus_index = np.sum(np.sqrt(np.square(self.pixwise_dif))) / self.img.size
 
-        # Keep copy of 100 focus idxs for detection 
-        if len(focus_idxs) < 100:
-            focus_idxs.append((self.imgname, self.focus_index))
+        # Keep copy of 1000 focus idxs for detection 
+        if len(PlotsFrame.focus_idxs) < 100:
+            PlotsFrame.focus_idxs.append((self.imgname, self.focus_index))
         else: 
-            focus_idxs.clear()
-            focus_idxs.append((self.imgname, self.focus_index))
+            PlotsFrame.focus_idxs.clear()
+            PlotsFrame.focus_idxs.append((self.imgname, self.focus_index))
             
-        print(focus_idxs[-5:])    
+        print(PlotsFrame.focus_idxs[-5:])    
         
         # Backup to a file a update the plot
         self.f = open(self.basepath + "focus_idxs.csv", "a+")
@@ -147,7 +147,6 @@ class PlotsFrame(tk.Frame):
                 
         
     def refresh_plot(self, fhandle):
-
         # remove old widgets
         if self.widget:
             self.widget.destroy()
@@ -158,9 +157,12 @@ class PlotsFrame(tk.Frame):
         # Prepare the plot
         plt = Figure(figsize=(4, 4), dpi=100)
         a = plt.add_subplot(211)
+        b = plt.add_subplot(212)
         a.set_ylabel("Focus Index (a.u.)")
         a.set_title("Focus index evolution")
-
+        b.set_ylabel("Anomaly (a.u.)")
+        b.set_title("Anomaly scores")
+        
         # Parse data
         data = fhandle.read().split('\n')
         xar=[]
@@ -170,28 +172,26 @@ class PlotsFrame(tk.Frame):
             if len(line)>1:
                 x,y = line.split(',')
                 xar.append(str(x))
-                yar.append(int(y))
+                yar.append(float(y))
                 
         a.plot(xar,yar)        
         
         canvas = FigureCanvasTkAgg(plt, self)
-
-        self.toolbar = NavigationToolbar2Tk(canvas, self)
+        
+        self.toolbar = toolbar = NavigationToolbar2Tk(canvas, self)
+        
+        
         self.widget = canvas.get_tk_widget()
         self.widget.pack(fill=tk.BOTH)
 
-
-class MainApplication(tk.Frame):
-    def __init__(self, parent, *args, **kwargs):
-        tk.Frame.__init__(self, parent, *args, **kwargs)
-        self.left_frame = LeftFrame(self)
-        self.plots_frame = PlotsFrame(self)
-        
-        self.left_frame.pack(side="left", fill="y")
-        self.plots_frame.pack(side="right", fill="both", expand=True)
+    def detect_defocus():
+        pass
 
 if __name__ == "__main__":
     root = tk.Tk()
     root.title('FibRem: Sleeping aid for EM microscopists')
-    MainApplication(root).pack(side="top", fill="both", expand=True)
+    lfm = LeftFrame(root)
+    lfm.pack(side="left", fill="y")
+    pfm = PlotsFrame(root)
+    pfm.pack(side="right", fill="both", expand=True)
     root.mainloop()
