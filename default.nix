@@ -7,6 +7,7 @@ let
     scikitimage
     matplotlib
     watchdog
+    #pywin32
   ];
   python-with-my-packages = python3.withPackages my-python-packages;
 in

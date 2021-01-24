@@ -750,3 +750,4 @@ class SEM_SmartSEM(SEM):
         else:
             utils.log_error('SEM', f'ERROR disconnecting from SmartSEM (ret_val: {ret_val}).')
             return False
+nnn
