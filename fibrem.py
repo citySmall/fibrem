@@ -2,7 +2,6 @@
 import json
 from collections import deque
 import matplotlib
-#import matplotlib.animation as animation
 matplotlib.use("TKAgg")
 from matplotlib.backends.backend_tkagg import (
     FigureCanvasTkAgg, NavigationToolbar2Tk)
@@ -20,15 +19,49 @@ import tifffile
 import tkinter as tk 
 from tkinter import filedialog
 from tkinter.messagebox import showinfo
+from twilio.rest import Client
 from watchdog.observers import Observer
 from watchdog.events import PatternMatchingEventHandler
 import pythoncom
 import win32com.client  # required to use CZEMApi.ocx (Carl Zeiss EM API)
 from win32com.client import VARIANT  # required for API function calls
 
+
+class MainApplication(tk.Tk):
+    
+    def __init__(self, *args, **kwargs):
+        tk.Tk.__init__(self, *args, **kwargs)
+
+
+        # the container is where we'll stack a bunch of frames
+        # on top of each other, then the one we want visible
+        # will be raised above the others
+        container = tk.Frame(self)
+        container.pack(side="right", fill="both", expand=True)
+        container.grid_rowconfigure(0, weight=1)
+        container.grid_columnconfigure(1, weight=1)
+
+        self.frames = {}
+        self.frames["navbar"] = NavBar(parent=self, controller=self)
+        self.frames["monitoring_plots"] = MonitoringPlots(parent=container, controller=self)
+        self.frames["sem_controller"] = SemController(parent=container, controller=self)
+
+        self.frames["navbar"].pack(side="left", fill="y")
+        self.frames["monitoring_plots"].grid(row=0, column=1, sticky="nsew")
+        self.frames["sem_controller"].grid(row=0, column=1, sticky="nsew") 
+        self.show_frame("monitoring_plots")
+
+        
+    def show_frame(self, page_name):
+        '''Show a frame for the given page name'''
+        frame = self.frames[page_name]
+        frame.tkraise()
+        
+   def get_frame(self, frame_name):
+        return self.frames[frame_name]     
         
 class Watchdog(PatternMatchingEventHandler, Observer):
-    def __init__(self, path='.', patterns="*" ,logfunc=print ,*args, **kwargs):
+    def __init__(self, path='.', patterns="*" ,logfunc=print, *args, **kwargs):
         PatternMatchingEventHandler.__init__(self, patterns)
         Observer.__init__(self)
         self.schedule(self, path=path, recursive=False)
@@ -39,7 +72,7 @@ class Watchdog(PatternMatchingEventHandler, Observer):
         # We sleep to allow time for the file to be created
         if event.src_path.split(".")[-1] == "tiff":
             sleep(10)
-            pfm.get_focus_index_croped(event.src_path)
+            app.main.get_focus_index_croped(event.src_path)
         
     def on_deleted(self, event):
         # This function is called when a file is deleted
@@ -50,10 +83,10 @@ class Watchdog(PatternMatchingEventHandler, Observer):
         self.log(f"Someone moved {event.src_path} to {event.dest_path}")
 
         
-class LeftFrame(tk.Frame):
-    def __init__(self, parent, *args, **kwargs):
-        tk.Frame.__init__(self, parent, *args, **kwargs)
-        self.parent = parent
+class NavBar(tk.Frame):
+    def __init__(self, parent, controller):
+        tk.Frame.__init__(self, parent)
+        self.controller = controller
         
         # Watchdog status
         self.watchdog = None
@@ -65,37 +98,52 @@ class LeftFrame(tk.Frame):
         self.marc_duty = tk.IntVar(0)
 
         # Generate checkbuttons
-        self.lbl1 = tk.Label(self, text='Select people to notify: ').pack(padx=5, pady=5,  anchor=tk.W)
-        self.cbtn1 = tk.Checkbutton(self, text='Ana', variable=self.ana_duty).pack(pady=5, anchor=tk.W)
-        self.cbtn2 = tk.Checkbutton(self, text='Elizabeth', variable=self.eliz_duty).pack(pady=5, anchor=tk.W)
-        self.cbtn3 = tk.Checkbutton(self, text='Marc', variable=self.marc_duty).pack(pady=5, anchor=tk.W)
-
-        # Generate control buttons
+        self.lbl1 = tk.Label(self, text='Select people to notify: ')
+        self.lbl1.pack(padx=5, pady=5,  anchor=tk.W)
+        self.cbtn1 = tk.Checkbutton(self, text='Ana', variable=self.ana_duty)
+        self.cbtn1.pack(pady=5, anchor=tk.W)
+        self.cbtn2 = tk.Checkbutton(self, text='Elizabeth', variable=self.eliz_duty)
+        self.cbtn2.pack(pady=5, anchor=tk.W)
+        self.cbtn3 = tk.Checkbutton(self, text='Marc', variable=self.marc_duty)
+        self.cbtn3.pack(pady=5, anchor=tk.W)
+        self.inp_lbl = tk.Label(self, text='Min FI: ')
+        self.inp_lbl.pack(padx=5, pady=7, anchor=tk.W)
+        self.inp = tk.Entry(self) 
+        self.inp.pack()
         
-        self.btn4 = tk.Button(self, text='Select Folder', command=self.select_path).pack(anchor=tk.S+tk.W)
-        self.btn5 = tk.Button(self, text='Start Monitoring', command=self.start_watchdog).pack(anchor=tk.S+tk.W)
-        self.btn6 = tk.Button(self, text='Stop Monitoring', command=self.stop_watchdog).pack(anchor=tk.S+tk.W)
-        self.btn7 = tk.Button(self, text='Un/Freeze', command=lambda: semc.toggle_freeze()).pack(anchor=tk.S+tk.W)
-        self.btn8 = tk.Button(self, text='Zeiss AF', command=lambda: semc.run_autofocus()).pack(anchor=tk.S+tk.W)
-        self.btn9 = tk.Button(self, text='Zeiss AS', command=lambda: semc.run_autostig()).pack(anchor=tk.S+tk.W)
-        self.btn11 = tk.Button(self, text='Zeiss AF+AS', command=lambda: semc.run_autofocus_stig()).pack(anchor=tk.S+tk.W)
-        self.btn13 = tk.Button(self, text='WD', command=lambda: self.ask_wd()).pack(anchor=tk.S+tk.W)
-        #self.sld1 = tk.Scale(self, from_=lambda: float(semc.get_wd()), to= lambda: float(semc.get_wd()),
-        #tickinterval=0.0005, command=lambda: semc.set_wd(float(self.sld1.get()))).pack(anchor=tk.S+tk.W) 
-        self.btn14 = tk.Button(self, text='upFcs', command=lambda: semc.set_wd(semc.get_wd() + 100 * 10 ** -9))
-        self.btn14.pack(anchor=tk.S+tk.W)
-        self.btn14_2 = tk.Button(self, text='upFFcs', command=lambda: semc.set_wd(semc.get_wd() + 10 * 10 ** -9))
-        self.btn14_2.pack(anchor=tk.S+tk.W)
-        self.lbl17 = tk.Label(self, text=' ').pack(pady=5)
-        self.btn15 = tk.Button(self, text='dwnFcs', command=lambda: semc.set_wd(semc.get_wd() - 100 * 10 ** -9))
-        self.btn15.pack(anchor=tk.S+tk.W)                       
-        self.btn15_2 = tk.Button(self, text='dwnFFcs', command=lambda: semc.set_wd(semc.get_wd() - 10 * 10 ** -9))
-        self.btn15_2.pack(anchor=tk.S+tk.W)                       
-        self.btn10 = tk.Button(self, text='Exit Fibrem', command=root.destroy).pack(anchor=tk.S+tk.W)
+        # Generate control buttons
+        self.lbl2 =  tk.Label(self, text='Setup monitoring: ')
+        self.lbl2.pack(padx=5, pady=7,  anchor=tk.W)
+        self.btn4 = tk.Button(self, text='Select Folder', command=self.select_path)
+        self.btn4.pack(anchor=tk.S+tk.W)
+        self.btn5 = tk.Button(self,  text='Start Monitoring', command=self.start_watchdog)
+        self.btn5.pack(anchor=tk.S+tk.W)
+        self.btn6 = tk.Button(self, text='Stop Monitoring', command=self.stop_watchdog)
+        self.btn6.pack(anchor=tk.S+tk.W)
+        self.btn8 = tk.Button(self, text='Sem Controller', command=lambda: self.controller.show_frame("sem_controller"))
+        self.btn8.pack(anchor=tk.S+tk.W)
+        self.btn9 = tk.Button(self, text='Monit. Plots',command=lambda: self.controller.show_frame("monitoring_plots"))
+        self.btn9.pack(anchor=tk.S+tk.W)
+        self.btn11 = tk.Button(self, text='Test Call', command=lambda: self.test_call())
+        self.btn11.pack(anchor=tk.S+tk.W)
 
-    def ask_wd(self):
-        self.log(semc.get_wd())
-               
+                               
+        self.btn10 = tk.Button(self, text='Exit Fibrem', command=lambda: app.destroy())
+        self.btn10.pack(anchor=tk.S+tk.W)
+
+    def test_call(self):
+        
+        account_sid = os.environ['TWILIO_ACCOUNT_SID']
+        auth_token = os.environ['TWILIO_AUTH_TOKEN']
+        client = Client(account_sid, auth_token)
+
+        call = client.calls.create(
+                    twiml='<Response><Say>FIBdeSEMAna has a problem!!</Say></Response>',
+                    to='+34667878228',
+                    from_='+19843004811')
+            
+        print(call.sid)
+                   
     def start_watchdog(self):
         if not self.watch_path:
             self.log('Select a path first!')
@@ -127,15 +175,17 @@ class LeftFrame(tk.Frame):
         showinfo(root, message=f'{message}\n')
 
         
-class PlotsFrame(tk.Frame):
+class MonitoringPlots(tk.Frame):
     
     focus_idxs = []
-    def __init__(self, parent, *args, **kwargs):
+    def __init__(self, parent, controller):
         tk.Frame.__init__(self, parent)
-        self.parent = parent
-        self.lbl1 = tk.Label(self, text='Vital constants plots').pack(pady=5)
+        self.controller = controller
+        self.lbl1 = tk.Label(self, text='Vital constants plots')
+        self.lbl1.pack(pady=5)
         self.widget = None
         self.toolbar = None
+        self.focus_idx_limit = 1000
         
     def get_focus_index(self, imgpath):
         print("Reading: " + imgpath)
@@ -150,13 +200,13 @@ class PlotsFrame(tk.Frame):
         self.focus_index = np.sum(np.sqrt(np.square(self.pixwise_dif))) / self.img.size
 
         # Keep copy of 1000 focus idxs for detection 
-        if len(PlotsFrame.focus_idxs) < 100:
-            PlotsFrame.focus_idxs.append((self.imgname, self.focus_index))
+        if len(MonitoringPlots.focus_idxs) < 100:
+            app.MonitoringPlots.focus_idxs.append((self.imgname, self.focus_index))
         else: 
-            PlotsFrame.focus_idxs.clear()
-            PlotsFrame.focus_idxs.append((self.imgname, self.focus_index))
+            app.MonitoringPlots.focus_idxs.clear()
+            app.MonitoringPlots.focus_idxs.append((self.imgname, self.focus_index))
             
-        print(PlotsFrame.focus_idxs[-5:])    
+        print(MonitoringPlots.focus_idxs[-5:])    
         
         # Backup to a file a update the plot
         self.f = open(os.path.join(self.basepath, "focus_idxs.csv"), "a+")
@@ -181,20 +231,35 @@ class PlotsFrame(tk.Frame):
         self.img_croped = self.img[self.xc:2*self.xc,self.yc:2*self.yc]
         self.smooth_short = gaussian(self.img_croped, sigma=2)
         self.smooth_long  = gaussian(self.img_croped, sigma=4)
-        self.img.flush()
         self.pixwise_dif = self.smooth_short - self.smooth_long
         self.focus_index = np.sum(np.sqrt(np.square(self.pixwise_dif))) / self.img.size
-        self.pixwise_dif.flush()
-        # Keep copy of 100 focus idxs for detection 
-        if len(PlotsFrame.focus_idxs) < 100:
-            PlotsFrame.focus_idxs.append((self.imgname, self.focus_index))
-        else: 
-            PlotsFrame.focus_idxs.clear()
-            PlotsFrame.focus_idxs.append((self.imgname, self.focus_index))
-            
-        print(PlotsFrame.focus_idxs[-5:])    
+
+        # If FI is less than min call
         
-        # Write FI to a file a update the plot
+        if self.focus_index < self.parent.navbar.inp.get():
+            account_sid = os.environ['TWILIO_ACCOUNT_SID']
+            auth_token = os.environ['TWILIO_AUTH_TOKEN']
+            client = Client(account_sid, auth_token)
+
+            call = client.calls.create(
+                        twiml='<Response><Say>FIBdeSEMAna has a problem!!</Say></Response>',
+                        to='+34667878228',
+                        from_='+19843004811')
+            
+            print(call.sid)
+
+
+        
+        # Keep copy of 100 focus idxs for detection 
+        if len(app.main.focus_idxs) < 100:
+            app.main.focus_idxs.append((self.imgname, self.focus_index))
+        else: 
+            app.main.focus_idxs.clear()
+            app.main.focus_idxs.append((self.imgname, self.focus_index))
+            
+        print(app.main.focus_idxs[-5:])    
+        
+        # Write FI to a file and update the plot
         self.f = open(os.path.join(self.basepath, "focus_idxs.csv"), "a+")
         self.f.write(self.imgname + "," + str(self.focus_index) + "\n")
         self.f.flush()
@@ -255,9 +320,16 @@ class PlotsFrame(tk.Frame):
     def detect_defocus():
         pass
 
-class SemController:
-    # Modified from SBEMimage
-    def __init__(self):
+
+class SemController(tk.Frame):
+    # EM server wrapper thanks to SBEMimage
+    focus_idxs = []
+    def __init__(self, parent, controller):
+        tk.Frame.__init__(self, parent)
+        self.controller = controller
+        self.lbl1 = tk.Label(self, text='Sem control')
+        self.lbl1.pack(pady=5)
+        
         exception_msg = ''
         try:
         # Dispatch SmartSEM Remote API: CZEMApi.ocx must be registered
@@ -273,10 +345,41 @@ class SemController:
         self.last_known_x, self.last_known_y, self.last_known_z = (
                     self.get_stage_xyz())
         
-        self.frame_size_codes = { '1024': 0, '512': 1, '2048': 2, '3072': 3, '4096': 4, '5120': 5,
-                              '6144': 6, '8192': 7, '12288': 8, '16384': 9, '24576': 10, '32768': 11}
 
+        # Focus control
+        # self.btn14 = tk.Button(self, text='upFcs',
+        #                        command=lambda: self.controller.set_wd(semc.get_wd() + 100 * 10 ** -9))
+        # self.btn14.pack(anchor=tk.S+tk.W)
+        # self.btn14_2 = tk.Button(self, text='upFFcs',
+        #                          command=lambda: self.controller.SemController.set_wd(semc.get_wd() + 10 * 10 ** -9))
+        # self.btn14_2.pack(anchor=tk.S+tk.W)
+        # self.lbl17 = tk.Label(self, text=' ').pack(pady=5)
+        # self.btn15 = tk.Button(self, text='dwnFcs',
+        #                        command=lambda: self.controller.set_wd(semc.get_wd() - 100 * 10 ** -9))
+        # self.btn15.pack(anchor=tk.S+tk.W)                       
+        # self.btn15_2 = tk.Button(self, text='dwnFFcs',
+        #                          command=lambda: self.controller.set_wd(semc.get_wd() - 10 * 10 ** -9))
+        # self.btn15_2.pack(anchor=tk.S+tk.W)
+        # self.curr_wd = self.get_wd()
+       
+           
+        self.wd_btn = tk.Button(self, text='Get WD', command=lambda: self.update_wd(self.get_wd()))
+        self.wd_btn.pack()
+           
+        self.fine_focus_sld = tk.Scale(self,
+                                       from_=self.curr_wd - 100 * 10 ** -9,
+                                       to=self.curr_wd - 100 * 10 ** -9,
+                                       tickinterval= 10 ** -9,
+                                       command=lambda: self.set_wd())
+                                      
+        self.fine_focus_sld.pack()
         
+        # Stigmatism sliders 
+       
+        
+    def update_wd(val, *args, **kwargs):
+            self.curr_wd = val
+               
     def sem_get(self, key):
         try:
             return self.sem_api.Get(key, 0)[1]
@@ -847,11 +950,5 @@ class SemController:
 
         
 if __name__ == "__main__":
-    root = tk.Tk()
-    root.title('FibRem: Sleeping aid for EM microscopists')
-    lfm = LeftFrame(root)
-    lfm.pack(side="left", fill="y")
-    pfm = PlotsFrame(root)
-    pfm.pack(side="right", fill="both", expand=True)
-    semc = SemController()
-    root.mainloop()
+    app = MainApplication()
+    app.mainloop()
