@@ -65,23 +65,31 @@ class LeftFrame(tk.Frame):
         self.marc_duty = tk.IntVar(0)
 
         # Generate checkbuttons
-        self.lbl1 = tk.Label(self, text='Select people to notify: ').pack(padx=5, pady=5,  anchor=tk.W)
-        self.cbtn1 = tk.Checkbutton(self, text='Ana', variable=self.ana_duty).pack(pady=5, anchor=tk.W)
-        self.cbtn2 = tk.Checkbutton(self, text='Elizabeth', variable=self.eliz_duty).pack(pady=5, anchor=tk.W)
-        self.cbtn3 = tk.Checkbutton(self, text='Marc', variable=self.marc_duty).pack(pady=5, anchor=tk.W)
+        self.lbl1 = tk.Label(self, text='Select people to notify: ')
+        self.lbl1.pack(padx=5, pady=5,  anchor=tk.W)
+        self.cbtn1 = tk.Checkbutton(self, text='Ana', variable=self.ana_duty)
+        self.cbtn1.pack(pady=5, anchor=tk.W)
+        self.cbtn2 = tk.Checkbutton(self, text='Elizabeth', variable=self.eliz_duty)
+        self.cbtn2.pack(pady=5, anchor=tk.W)
+        self.cbtn3 = tk.Checkbutton(self, text='Marc', variable=self.marc_duty)
+        self.cbtn3.pack(pady=5, anchor=tk.W)
 
         # Generate control buttons
         
-        self.btn4 = tk.Button(self, text='Select Folder', command=self.select_path).pack(anchor=tk.S+tk.W)
-        self.btn5 = tk.Button(self, text='Start Monitoring', command=self.start_watchdog).pack(anchor=tk.S+tk.W)
-        self.btn6 = tk.Button(self, text='Stop Monitoring', command=self.stop_watchdog).pack(anchor=tk.S+tk.W)
-        self.btn7 = tk.Button(self, text='Un/Freeze', command=lambda: semc.toggle_freeze()).pack(anchor=tk.S+tk.W)
-        self.btn8 = tk.Button(self, text='Zeiss AF', command=lambda: semc.run_autofocus()).pack(anchor=tk.S+tk.W)
-        self.btn9 = tk.Button(self, text='Zeiss AS', command=lambda: semc.run_autostig()).pack(anchor=tk.S+tk.W)
-        self.btn11 = tk.Button(self, text='Zeiss AF+AS', command=lambda: semc.run_autofocus_stig()).pack(anchor=tk.S+tk.W)
-        self.btn13 = tk.Button(self, text='WD', command=lambda: self.ask_wd()).pack(anchor=tk.S+tk.W)
-        #self.sld1 = tk.Scale(self, from_=lambda: float(semc.get_wd()), to= lambda: float(semc.get_wd()),
-        #tickinterval=0.0005, command=lambda: semc.set_wd(float(self.sld1.get()))).pack(anchor=tk.S+tk.W) 
+        self.btn4 = tk.Button(self, text='Select Folder', command=self.select_path)
+        self.btn4.pack(anchor=tk.S+tk.W)
+        self.btn5 = tk.Button(self,  text='Start Monitoring', command=self.start_watchdog)
+        self.btn5.pack(anchor=tk.S+tk.W)
+        self.btn6 = tk.Button(self, text='Stop Monitoring', command=self.stop_watchdog)
+        self.btn6.pack(anchor=tk.S+tk.W)
+        self.btn7 = tk.Button(self, text='Un/Freeze', command=lambda: semc.toggle_freeze())
+        self.btn7.pack(anchor=tk.S+tk.W)
+        self.btn8 = tk.Button(self, text='Zeiss AF', command=lambda: semc.run_autofocus())
+        self.btn8.pack(anchor=tk.S+tk.W)
+        self.btn9 = tk.Button(self, text='Zeiss AS', command=lambda: semc.run_autostig())
+        self.btn9.pack(anchor=tk.S+tk.W)
+        self.btn11 = tk.Button(self, text='Zeiss AF+AS', command=lambda: semc.run_autofocus_stig())
+        self.btn11.pack(anchor=tk.S+tk.) 
         self.btn14 = tk.Button(self, text='upFcs', command=lambda: semc.set_wd(semc.get_wd() + 100 * 10 ** -9))
         self.btn14.pack(anchor=tk.S+tk.W)
         self.btn14_2 = tk.Button(self, text='upFFcs', command=lambda: semc.set_wd(semc.get_wd() + 10 * 10 ** -9))
@@ -91,11 +99,10 @@ class LeftFrame(tk.Frame):
         self.btn15.pack(anchor=tk.S+tk.W)                       
         self.btn15_2 = tk.Button(self, text='dwnFFcs', command=lambda: semc.set_wd(semc.get_wd() - 10 * 10 ** -9))
         self.btn15_2.pack(anchor=tk.S+tk.W)                       
-        self.btn10 = tk.Button(self, text='Exit Fibrem', command=root.destroy).pack(anchor=tk.S+tk.W)
+        self.btn10 = tk.Button(self, text='Exit Fibrem', command=root.destroy)
+        self.btn10.pack(anchor=tk.S+tk.W)
 
-    def ask_wd(self):
-        self.log(semc.get_wd())
-               
+                   
     def start_watchdog(self):
         if not self.watch_path:
             self.log('Select a path first!')
@@ -402,15 +409,15 @@ class SemController:
     #     return True
 
     def get_aperture_size(self):
-        """Read aperture size (in μm) from SmartSEM."""
+        """Read aperture size (in Î¼m) from SmartSEM."""
         return round(self.sem_get('AP_APERTURESIZE') * 10**6, 1)
 
     # def set_aperture_size(self, aperture_size_index):
-    #     """Save the aperture size (in μm) and set the SEM's beam to this
+    #     """Save the aperture size (in Î¼m) and set the SEM's beam to this
     #     aperture size."""
     #     # Call method in parent class
     #     super().set_aperture_size(aperture_size_index)
-    #     # aperture_size given in μm
+    #     # aperture_size given in Î¼m
     #     ret_val = self.sem_set('DP_APERTURE', aperture_size_index)
     #     if ret_val == 0:
     #         return True
