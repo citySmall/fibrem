@@ -28,10 +28,8 @@ from win32com.client import VARIANT  # required for API function calls
 
 
 class MainApplication(tk.Tk):
-    
     def __init__(self, *args, **kwargs):
         tk.Tk.__init__(self, *args, **kwargs)
-
 
         # the container is where we'll stack a bunch of frames
         # on top of each other, then the one we want visible
@@ -42,9 +40,10 @@ class MainApplication(tk.Tk):
         container.grid_columnconfigure(1, weight=1)
 
         self.frames = {}
-        self.frames["navbar"] = NavBar(parent=self, controller=self)
+        self.frames["navbar"] = NavBar(parent=self, controller=self) 
         self.frames["monitoring_plots"] = MonitoringPlots(parent=container, controller=self)
         self.frames["sem_controller"] = SemController(parent=container, controller=self)
+    
 
         self.frames["navbar"].pack(side="left", fill="y")
         self.frames["monitoring_plots"].grid(row=0, column=1, sticky="nsew")
@@ -57,13 +56,16 @@ class MainApplication(tk.Tk):
         frame = self.frames[page_name]
         frame.tkraise()
         
-   def get_frame(self, frame_name):
+    def get_frame(self, frame_name):
+        # get the reference to interact among objects
         return self.frames[frame_name]     
-        
+
+    
 class Watchdog(PatternMatchingEventHandler, Observer):
-    def __init__(self, path='.', patterns="*" ,logfunc=print, *args, **kwargs):
+    def __init__(self, controller, path='.', patterns="*" ,logfunc=print):
         PatternMatchingEventHandler.__init__(self, patterns)
         Observer.__init__(self)
+        self.controller = controller
         self.schedule(self, path=path, recursive=False)
         self.log = logfunc
 
@@ -72,7 +74,8 @@ class Watchdog(PatternMatchingEventHandler, Observer):
         # We sleep to allow time for the file to be created
         if event.src_path.split(".")[-1] == "tiff":
             sleep(10)
-            app.main.get_focus_index_croped(event.src_path)
+            semc_ref = self.controller.get_frame('monitoring_plots')
+            semc_ref.get_focus_index_croped(event.src_path)
         
     def on_deleted(self, event):
         # This function is called when a file is deleted
@@ -149,7 +152,7 @@ class NavBar(tk.Frame):
             self.log('Select a path first!')
             
         if self.watchdog is None:
-            self.watchdog = Watchdog(path=self.watch_path, patterns="*.tiff")
+            self.watchdog = Watchdog(path=self.watch_path, patterns="*.tiff", controller=self.controller)
             self.watchdog.start()
             self.log('Watchdog started')
         else:
@@ -172,7 +175,7 @@ class NavBar(tk.Frame):
             self.log(f'Selected path: {path}')    
 
     def log(self, message):
-        showinfo(root, message=f'{message}\n')
+        showinfo(app, message=f'{message}\n')
 
         
 class MonitoringPlots(tk.Frame):
@@ -232,11 +235,13 @@ class MonitoringPlots(tk.Frame):
         self.smooth_short = gaussian(self.img_croped, sigma=2)
         self.smooth_long  = gaussian(self.img_croped, sigma=4)
         self.pixwise_dif = self.smooth_short - self.smooth_long
-        self.focus_index = np.sum(np.sqrt(np.square(self.pixwise_dif))) / self.img.size
+        self.focus_index = np.sum(np.sqrt(np.square(self.pixwise_dif))) / self.img_croped.size
 
-        # If FI is less than min call
-        
-        if self.focus_index < self.parent.navbar.inp.get():
+        # If FI is less than min: call person on duty
+
+        self.nav_ref = self.controller.get_frame("navbar")
+        self.min_fi = self.nav_ref.inp.get()
+        if self.focus_index < float(self.min_fi):
             account_sid = os.environ['TWILIO_ACCOUNT_SID']
             auth_token = os.environ['TWILIO_AUTH_TOKEN']
             client = Client(account_sid, auth_token)
@@ -251,13 +256,13 @@ class MonitoringPlots(tk.Frame):
 
         
         # Keep copy of 100 focus idxs for detection 
-        if len(app.main.focus_idxs) < 100:
-            app.main.focus_idxs.append((self.imgname, self.focus_index))
-        else: 
-            app.main.focus_idxs.clear()
-            app.main.focus_idxs.append((self.imgname, self.focus_index))
+        # if len(app.main.focus_idxs) < 100:
+        #     app.main.focus_idxs.append((self.imgname, self.focus_index))
+        # else: 
+        #     app.main.focus_idxs.clear()
+        #     app.main.focus_idxs.append((self.imgname, self.focus_index))
             
-        print(app.main.focus_idxs[-5:])    
+        # print(app.main.focus_idxs[-5:])    
         
         # Write FI to a file and update the plot
         self.f = open(os.path.join(self.basepath, "focus_idxs.csv"), "a+")
@@ -336,49 +341,66 @@ class SemController(tk.Frame):
         # in the Windows registry ('CZ.EMApiCtrl.1').
             self.sem_api = win32com.client.Dispatch('CZ.EMApiCtrl.1')
             ret_val = self.sem_api.InitialiseRemoting()
+            print("Connection with EM Server stablished!")
         except Exception as e:
             ret_val = 1 
             exception_msg = str(e)
             if ret_val != 0:   # In ZEISS API, response of '0' means success
                 print(f'Remote API control could not be initialised (ret_val: {ret_val}). {exception_msg}')
-        # Read current SEM stage coordinates
+
+        # Read current SEM parameters
+        self.curr_wd = self.get_wd()
         self.last_known_x, self.last_known_y, self.last_known_z = (
                     self.get_stage_xyz())
         
 
         # Focus control
-        # self.btn14 = tk.Button(self, text='upFcs',
-        #                        command=lambda: self.controller.set_wd(semc.get_wd() + 100 * 10 ** -9))
-        # self.btn14.pack(anchor=tk.S+tk.W)
-        # self.btn14_2 = tk.Button(self, text='upFFcs',
-        #                          command=lambda: self.controller.SemController.set_wd(semc.get_wd() + 10 * 10 ** -9))
-        # self.btn14_2.pack(anchor=tk.S+tk.W)
-        # self.lbl17 = tk.Label(self, text=' ').pack(pady=5)
-        # self.btn15 = tk.Button(self, text='dwnFcs',
-        #                        command=lambda: self.controller.set_wd(semc.get_wd() - 100 * 10 ** -9))
-        # self.btn15.pack(anchor=tk.S+tk.W)                       
-        # self.btn15_2 = tk.Button(self, text='dwnFFcs',
-        #                          command=lambda: self.controller.set_wd(semc.get_wd() - 10 * 10 ** -9))
-        # self.btn15_2.pack(anchor=tk.S+tk.W)
-        # self.curr_wd = self.get_wd()
+        self.btn1 = tk.Button(self, text='upFFcs >>',
+                              command=lambda: self.set_wd(self.get_wd() + 10 * 10 ** -9))
+        self.btn1.pack(anchor=tk.N)
+        self.btn2 = tk.Button(self, text= 'upFcs >',
+                              command=lambda: self.set_wd(self.get_wd() + 100 * 10 ** -9))
+        self.btn2.pack(anchor=tk.N)
+        self.btn4 = tk.Button(self, text='< dwnFcs',
+                              command=lambda: self.set_wd(self.get_wd() - 100 * 10 ** -9))
+        self.btn4.pack(anchor=tk.N)                       
+        self.btn5 = tk.Button(self, text='<< dwnFFcs',
+                              command=lambda: self.set_wd(self.get_wd() - 10 * 10 ** -9))
+        self.btn5.pack(anchor=tk.N)
+
        
            
-        self.wd_btn = tk.Button(self, text='Get WD', command=lambda: self.update_wd(self.get_wd()))
-        self.wd_btn.pack()
-           
+        self.wd_btn = tk.Button(self, text='Get WD', command=lambda: self.update_wd())
+        self.wd_btn.pack(anchor=tk.S)
+
+        def on_slider_change(self, new_wd):
+            self.set_wd(new_wd)
+            
         self.fine_focus_sld = tk.Scale(self,
                                        from_=self.curr_wd - 100 * 10 ** -9,
-                                       to=self.curr_wd - 100 * 10 ** -9,
+                                       to=self.curr_wd + 100 * 10 ** -9,
                                        tickinterval= 10 ** -9,
-                                       command=lambda: self.set_wd())
+                                       command=on_slider_change)
                                       
-        self.fine_focus_sld.pack()
+        self.fine_focus_sld.pack(anchor=tk.S)
         
-        # Stigmatism sliders 
+        # Stigmatism control
+        self.btn6 = tk.Button(self, text='upStigmX',
+                              command=lambda: self.set_stig_x(self.get_stig_x() + 0.1))
+        self.btn6.pack(anchor=tk.N)
+        self.btn7 = tk.Button(self, text= 'dwnStigmX',
+                              command=lambda: self.set_stig_x(self.get_stig_x() - 0.1))
+        self.btn7.pack(anchor=tk.N)
+        self.btn8 = tk.Button(self, text='upStigmY',
+                              command=lambda: self.set_stig_y(self.get_stig_y() + 0.1))
+        self.btn8.pack(anchor=tk.N)                       
+        self.btn9 = tk.Button(self, text='dwnStigmY',
+                              command=lambda: self.set_stig_y(self.get_stig_y() - 0.1))
+        self.btn9.pack(anchor=tk.N)
        
         
-    def update_wd(val, *args, **kwargs):
-            self.curr_wd = val
+    def update_wd(self):
+        self.curr_wd = self.get_wd()
                
     def sem_get(self, key):
         try:
